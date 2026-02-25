@@ -3,6 +3,8 @@ numpy
 fastapi
 uvicorn[standard]
 python-multipart
-demucs
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch
 torchaudio
+demucs
+torchcodec

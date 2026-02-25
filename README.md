@@ -1,6 +1,8 @@
 # Audio Cleaner
 
-FastAPI web app to separate and remix audio/video stems using [Demucs](https://github.com/facebookresearch/demucs).
+> Samsung shipped Audio Eraser with the S24 and never backported it to the S23. I do basic content creation and needed clean audio — wind, crowds, background noise all ruin clips shot on a phone. Samsung's implementation is still superior but it's locked to newer hardware. Rather than upgrading just for one feature, I built this. It uses [Demucs](https://github.com/facebookresearch/demucs) to split audio into stems and covers most of my use cases well enough.
+
+FastAPI web app to separate and remix audio/video stems using Demucs.
 
 ## Features
 
@@ -30,11 +32,14 @@ docker build -t audio-cleaner .
 docker run -p 8000:8000 audio-cleaner
 ```
 
-For GPU support:
+
+## Run with Docker Compose
 
 ```bash
-docker run --gpus all -p 8000:8000 audio-cleaner
+docker compose up
 ```
+
+Jobs and static files are mounted as volumes so they persist across restarts.
 
 ## API
 
