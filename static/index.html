@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Mixer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border:  #2e3248;
+    --primary: #6c63ff;
+    --primary-dim: #4f49c0;
+    --text:    #e8eaf6;
+    --muted:   #7b80a0;
+    --success: #4caf7d;
+    --error:   #f05858;
+    --radius:  14px;
+  }
+
+  body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 48px 16px 80px;
+  }
+
+  .container { width: 100%; max-width: 560px; }
+
+  .header { margin-bottom: 24px; }
+  .header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -.02em; }
+  .header p  { margin-top: 4px; color: var(--muted); font-size: 0.85rem; }
+
+  /* Single card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* ── File row ── */
+  .file-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .drop-zone {
+    flex: 1;
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--primary);
+    background: rgba(108,99,255,.06);
+  }
+  .drop-zone .drop-icon { font-size: 1.4rem; flex-shrink: 0; }
+  .drop-zone .drop-text { font-size: 0.85rem; color: var(--muted); min-width: 0; }
+  .drop-zone .drop-text strong { color: var(--text); display: block; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #fileInput { display: none; }
+
+  .btn-process {
+    flex-shrink: 0;
+    padding: 11px 20px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .12s, opacity .12s;
+    white-space: nowrap;
+  }
+  .btn-process:hover:not(:disabled) { background: var(--primary-dim); }
+  .btn-process:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Device select inline */
+  .device-select {
+    flex-shrink: 0;
+    padding: 11px 10px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    font-size: 0.82rem;
+    background: var(--surface2);
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  /* ── Progress ── */
+  .progress-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .progress-header { display: flex; justify-content: space-between; align-items: baseline; }
+  .progress-msg { font-size: 0.82rem; color: var(--muted); }
+  .progress-pct { font-size: 0.82rem; font-weight: 700; color: var(--primary); }
+  .progress-track {
+    height: 6px;
+    background: var(--surface2);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 99px;
+    width: 0%;
+    transition: width .4s ease;
+  }
+  .progress-fill.done  { background: var(--success); }
+  .progress-fill.error { background: var(--error); }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid var(--border); }
+
+  /* ── Controls ── */
+  .controls { display: flex; flex-direction: column; gap: 14px; }
+
+  .control-row {
+    display: grid;
+    grid-template-columns: 130px 1fr 48px;
+    align-items: center;
+    gap: 12px;
+  }
+  .ctrl-label { display: flex; flex-direction: column; gap: 1px; }
+  .ctrl-name  { font-weight: 600; font-size: 0.88rem; }
+  .ctrl-desc  { font-size: 0.7rem; color: var(--muted); }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 5px;
+    border-radius: 99px;
+    background: var(--surface2);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    border: 2px solid var(--surface);
+    box-shadow: 0 1px 6px rgba(0,0,0,.4);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: 2px solid var(--surface);
+  }
+  .ctrl-val { font-size: 0.8rem; font-weight: 700; color: var(--primary); text-align: right; }
+
+  /* ── Actions ── */
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .btn-secondary {
+    padding: 11px;
+    border: 1.5px solid var(--primary);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--primary);
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .12s, color .12s;
+  }
+  .btn-secondary:hover:not(:disabled) { background: var(--primary); color: #fff; }
+  .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-download {
+    padding: 11px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .12s;
+  }
+  .btn-download:hover { background: var(--primary-dim); }
+
+  /* ── Player ── */
+  .player-wrap { border-radius: 8px; overflow: hidden; }
+  .player-wrap audio { width: 100%; display: block; background: var(--surface2); }
+
+  /* ── Reset ── */
+  .reset-link {
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .reset-link:hover { color: var(--primary); }
+
+  .hidden { display: none !important; }
+  .error-text { color: var(--error) !important; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Audio Mixer</h1>
+    <p>Separate and control voice, music, background &amp; wind.</p>
+  </div>
+
+  <div class="card">
+
+    <!-- File + Process -->
+    <div class="file-row">
+      <div class="drop-zone" id="dropZone">
+        <span class="drop-icon">🎬</span>
+        <div class="drop-text" id="dropText">
+          <strong>Choose or drop a file</strong>
+          video or audio
+        </div>
+        <input type="file" id="fileInput" accept="video/*,audio/*">
+      </div>
+      <select class="device-select" id="deviceInput">
+        <option value="cpu">CPU</option>
+        <option value="cuda">CUDA</option>
+        <option value="mps">MPS</option>
+      </select>
+      <button class="btn-process" id="processBtn" disabled onclick="uploadAndProcess()">
+        Process
+      </button>
+    </div>
+
+    <!-- Progress (hidden until processing) -->
+    <div class="progress-wrap hidden" id="progressWrap">
+      <div class="progress-header">
+        <span class="progress-msg" id="statusMsg">Initializing...</span>
+        <span class="progress-pct" id="progressPct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </div>
+
+    <!-- Controls (hidden until ready) -->
+    <div class="hidden" id="mixSection">
+      <div class="divider" style="margin-bottom:20px"></div>
+
+      <div class="controls">
+        <div class="control-row">
+          <div class="ctrl-label">
+            <span class="ctrl-name">Voice</span>
+            <span class="ctrl-desc">Speech &amp; vocals</span>
+          </div>
+          <input type="range" id="vol-voice" min="0" max="200" value="100"
+                 oninput="document.getElementById('vd-voice').textContent=this.value+'%'">
+          <span class="ctrl-val" id="vd-voice">100%</span>
+        </div>
+
+        <div class="control-row">
+          <div class="ctrl-label">
+            <span class="ctrl-name">Music</span>
+            <span class="ctrl-desc">Drums &amp; bass</span>
+          </div>
+          <input type="range" id="vol-music" min="0" max="200" value="100"
+                 oninput="document.getElementById('vd-music').textContent=this.value+'%'">
+          <span class="ctrl-val" id="vd-music">100%</span>
+        </div>
+
+        <div class="control-row">
+          <div class="ctrl-label">
+            <span class="ctrl-name">Background</span>
+            <span class="ctrl-desc">Ambient &amp; other</span>
+          </div>
+          <input type="range" id="vol-background" min="0" max="200" value="100"
+                 oninput="document.getElementById('vd-background').textContent=this.value+'%'">
+          <span class="ctrl-val" id="vd-background">100%</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="control-row">
+          <div class="ctrl-label">
+            <span class="ctrl-name">Wind Reduction</span>
+            <span class="ctrl-desc">Broadband filter</span>
+          </div>
+          <input type="range" id="vol-wind" min="0" max="100" value="0"
+                 oninput="document.getElementById('vd-wind').textContent=this.value+'%'">
+          <span class="ctrl-val" id="vd-wind">0%</span>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:20px">
+        <button class="btn-secondary" id="previewBtn" onclick="previewMix()">Preview</button>
+        <button class="btn-download" onclick="downloadOutput()">Download</button>
+      </div>
+
+      <div class="player-wrap hidden" id="playerWrap" style="margin-top:16px"></div>
+
+      <div class="reset-link" style="margin-top:14px" onclick="resetAll()">Start over</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  let jobId = null;
+  let eventSource = null;
+
+  const fileInput  = document.getElementById("fileInput");
+  const dropZone   = document.getElementById("dropZone");
+  const processBtn = document.getElementById("processBtn");
+
+  // ── File selection ──────────────────────────────────────────
+  fileInput.addEventListener("change", () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+
+  dropZone.addEventListener("click",     () => fileInput.click());
+  dropZone.addEventListener("dragover",  (e) => { e.preventDefault(); dropZone.classList.add("dragover"); });
+  dropZone.addEventListener("dragleave", ()  => dropZone.classList.remove("dragover"));
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault(); dropZone.classList.remove("dragover");
+    if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+  });
+
+  function setFile(f) {
+    fileInput._file = f;
+    const icon = f.type.startsWith("video") ? "🎬" : "🎵";
+    const mb   = (f.size / 1048576).toFixed(1);
+    document.getElementById("dropText").innerHTML =
+      `<strong>${f.name}</strong>${mb} MB`;
+    dropZone.querySelector(".drop-icon").textContent = icon;
+    processBtn.disabled = false;
+  }
+
+  // ── Upload & process ────────────────────────────────────────
+  async function uploadAndProcess() {
+    const file = fileInput._file || fileInput.files[0];
+    if (!file) return;
+
+    processBtn.disabled = true;
+    processBtn.textContent = "Uploading...";
+    document.getElementById("progressWrap").classList.remove("hidden");
+
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const upRes = await fetch("/api/upload", { method: "POST", body: fd });
+      if (!upRes.ok) throw new Error(await upRes.text());
+      jobId = (await upRes.json()).job_id;
+
+      const device = document.getElementById("deviceInput").value;
+      const pRes   = await fetch(`/api/process/${jobId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device }),
+      });
+      if (!pRes.ok) throw new Error(await pRes.text());
+
+      processBtn.textContent = "Processing...";
+      startSSE(jobId);
+    } catch (err) {
+      processBtn.disabled  = false;
+      processBtn.textContent = "Process";
+      alert("Failed: " + err.message);
+    }
+  }
+
+  // ── SSE ─────────────────────────────────────────────────────
+  function startSSE(jid) {
+    if (eventSource) eventSource.close();
+    eventSource = new EventSource(`/api/status/${jid}`);
+
+    eventSource.onmessage = (e) => {
+      const d = JSON.parse(e.data);
+      setProgress(d.progress, d.message, d.status);
+
+      if (d.status === "ready") {
+        eventSource.close();
+        processBtn.textContent = "Done ✓";
+        document.getElementById("mixSection").classList.remove("hidden");
+      } else if (d.status === "error") {
+        eventSource.close();
+        document.getElementById("progressFill").classList.add("error");
+        document.getElementById("statusMsg").classList.add("error-text");
+        document.getElementById("statusMsg").textContent = d.message || "Error";
+        processBtn.disabled   = false;
+        processBtn.textContent = "Retry";
+      }
+    };
+    eventSource.onerror = () => eventSource.close();
+  }
+
+  function setProgress(pct, msg, status) {
+    const fill = document.getElementById("progressFill");
+    fill.style.width = pct + "%";
+    if (status === "ready") fill.classList.add("done");
+    document.getElementById("progressPct").textContent = pct + "%";
+    document.getElementById("statusMsg").textContent   = msg || "";
+  }
+
+  // ── Preview ─────────────────────────────────────────────────
+  async function previewMix() {
+    const btn = document.getElementById("previewBtn");
+    btn.disabled = true;
+    btn.textContent = "Generating...";
+
+    try {
+      const res = await fetch(`/api/preview/${jobId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          voice:          parseInt(document.getElementById("vol-voice").value),
+          music:          parseInt(document.getElementById("vol-music").value),
+          background:     parseInt(document.getElementById("vol-background").value),
+          wind_reduction: parseInt(document.getElementById("vol-wind").value),
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { preview_url } = await res.json();
+
+      const wrap = document.getElementById("playerWrap");
+      wrap.innerHTML = `<audio controls src="${preview_url}?t=${Date.now()}"></audio>`;
+      wrap.classList.remove("hidden");
+    } catch (err) {
+      alert("Preview failed: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Preview";
+    }
+  }
+
+  // ── Download ────────────────────────────────────────────────
+  function downloadOutput() {
+    if (jobId) window.location.href = `/api/download/${jobId}`;
+  }
+
+  // ── Reset ───────────────────────────────────────────────────
+  function resetAll() {
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    jobId = null;
+    fileInput.value = "";
+    fileInput._file = null;
+
+    dropZone.querySelector(".drop-icon").textContent = "🎬";
+    document.getElementById("dropText").innerHTML =
+      "<strong>Choose or drop a file</strong>video or audio";
+
+    document.getElementById("progressWrap").classList.add("hidden");
+    document.getElementById("progressFill").style.width = "0%";
+    document.getElementById("progressFill").className = "progress-fill";
+    document.getElementById("progressPct").textContent = "0%";
+    document.getElementById("statusMsg").className = "progress-msg";
+    document.getElementById("statusMsg").textContent = "Initializing...";
+
+    document.getElementById("mixSection").classList.add("hidden");
+    document.getElementById("playerWrap").classList.add("hidden");
+    document.getElementById("playerWrap").innerHTML = "";
+
+    ["voice","music","background"].forEach(k => {
+      document.getElementById(`vol-${k}`).value = 100;
+      document.getElementById(`vd-${k}`).textContent = "100%";
+    });
+    document.getElementById("vol-wind").value = 0;
+    document.getElementById("vd-wind").textContent = "0%";
+
+    processBtn.disabled = true;
+    processBtn.textContent = "Process";
+  }
+</script>
+</body>
+</html>
